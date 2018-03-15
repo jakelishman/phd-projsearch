@@ -75,6 +75,37 @@ def orthonormal_basis(state):
     return out
 
 def target(states, sequence):
+    """target(states, sequence) -> params -> float * np.array of float
+
+    Returns a function which takes the parameter vector as an argument, and
+    returns a tuple of the infidelity, and the derivatives of the infidelity
+    with respect to each of the parameters.
+
+    This is intended for use with
+        scipy.optimize.minimize(target(states, sequence), params, jac=True)
+
+    Arguments:
+    states: np.array of qutip.Qobj --
+        An array of a set of orthonormal basis vectors.  The first state in the
+        array is the target state, which we will try to optimise to put entirely
+        in the excited state.  All other states will be moved into the ground
+        state.
+
+        All states should be of the same number of motional levels considered,
+        which should also match the dimensionality of the sequence.  There
+        should be enough space to fit all calculations in without overflowing
+        the arrays.
+
+    sequence: iontools.Sequence --
+        The pulse sequence to apply.  The parameters to the sequence will be
+        varied, but the order of the pulses will be the same throughout.
+
+    Returns:
+    np.array of float -> float * np.array of float --
+        A function which takes a vector of parameters (of length 2 * number of
+        pulses in sequence, i.e. [time, phase, time, phase, ...]) and returns
+        the value of the infidelity of the gate operation and its derivatives
+        with respect to each of the parameters."""
     e_bra, g_bra = qubit_projectors(states[0])
     bras = np.array([g_bra] + [e_bra] * (len(states) - 1))
     def func(params):

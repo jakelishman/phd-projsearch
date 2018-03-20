@@ -23,15 +23,28 @@ def prepare_sequence(run_params):
                     run_params.sequence)
     return target.orthonormal_basis(start_state), it.Sequence(*sidebands)
 
+def _maximums_generator(sequence, rabi, nperiods):
+    for sideband in sequence:
+        yield 2 * np.pi * nperiods / rabi[abs(sideband)]
+        yield 2 * np.pi
+
+class _make_random:
+    def __init__(self, run_params, nperiods=3):
+        orders = set(map(abs, run_params.sequence))
+        rabi = dict([(x, run_params.laser.rabi_mod(0, x)) for x in orders])
+        self.max = list(_maximums_generator(run_params.sequence,rabi, nperiods))
+
+    def __call__(self):
+        return np.array([np.random.uniform(0.0, max) for max in self.max])
+
 def single_sequence(run_params, success_file, failure_file=None):
     def runner(succ, fail):
         output.print_info(run_params, file=succ)
         if fail is not None:
             output.print_info(run_params, file=fail)
-        nparams = 2 * len(list(run_params.sequence))
         minimise_over_time(
             target.target(*prepare_sequence(run_params)),
-            lambda: np.random.rand(nparams),
+            _make_random(run_params),
             output.file_filter(succ, fail), run_params.time)
     if failure_file is not None:
         with open(success_file, "w") as succ,\

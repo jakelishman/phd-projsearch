@@ -156,7 +156,7 @@ stash_python_modules() {
 
 # Fail if the directory $1 is non-empty.
 check_output_dir_safe() {
-    if [[ ! -z "$(ls -A "$2")" ]]; then
+    if [[ ! -z "$(ls -A "$1" 2>/dev/null)" ]]; then
         echo "ERROR: output directory is not empty." >&2
         echo "       Consider passing option --force-output to override." >&2
         exit 1
@@ -333,7 +333,7 @@ conda activate "${qutip_environment}"
 success_file="${output_success_file}_\${PBS_ARRAY_INDEX}"
 #failure_file="${output_failure_file}_\${PBS_ARRAY_INDEX}"
 
-head -n "\${PBS_ARRAY_INDEX}" "${output_machine_inputs_file}" \\
+head -n "\${PBS_ARRAY_INDEX}" "$(realpath "${output_machine_inputs_file}")" \\
     | tail -n-1 \\
     | python -O "${python_entry_point}" "\${success_file}" #"\${failure_file}"
 

@@ -67,7 +67,7 @@ def print_key_val(key, val, indent=0, **kwargs):
     return print(indent * "    " + key + " = " + val, **kwargs)
 
 def float_array_string(arr):
-    return "[" + ", ".join(map(lambda x: str(round(x, 6)), arr)) + "]"
+    return "[" + ", ".join(map(str, arr)) + "]"
 
 def print_result(res, indent=0, **kwargs):
     print_kv = partial(print_key_val, indent=indent, **kwargs)

@@ -1,4 +1,11 @@
+"""Tools for outputting the results from a minimise to a file.  Typically these
+would be used for the `minimise_over_time()` function, since they're largely
+concerned with outputting multiple results to a file."""
+
 from functools import partial
+import sys
+
+__all__ = ['filter_results', 'test_filter', 'file_filter', 'print_info']
 
 class filter_results:
     """Treat the return value of this as a function which can be used as a
@@ -9,7 +16,7 @@ class filter_results:
     `failure_callback`.  A result is "better" if the `compare` function returns
     True."""
     def __init__(self, success_callback, failure_callback=None,
-                 compare=(lambda x, y: x < y),
+                 compare=(lambda x, y: x <= y),
                  initial_value=None):
         """Arguments:
         success_callback: scipy.optimize.OptimizeResult -> None --
@@ -60,35 +67,50 @@ class filter_results:
             return self.failure_callback(optimise_result)
 
 def test_filter():
-    return filter_results(lambda res: print("Success: {}".format(res.fun)),
-                          lambda res: print("Failure: {}".format(res.fun)))
+    """test_filter() -> filter_results
 
-def print_key_val(key, val, indent=0, **kwargs):
+    Produce a filter which simply writes the value of the target function to
+    stdout or stderr for success or failure respectively."""
+    return filter_results(lambda res: print("Success: {}".format(res.fun),\
+                                            file=sys.stdout),
+                          lambda res: print("Failure: {}".format(res.fun),\
+                                            file=sys.stderr))
+
+def _print_key_val(key, val, indent=0, **kwargs):
+    """Print out a key-val pair formatted nicely."""
     return print(indent * "    " + key + " = " + val, **kwargs)
 
-def float_array_string(arr):
+def _float_array_string(arr):
+    """Return a string representing a given array of floats."""
     return "[" + ", ".join(map(str, arr)) + "]"
 
-def print_result(res, indent=0, **kwargs):
-    print_kv = partial(print_key_val, indent=indent, **kwargs)
-    print_kv("infidelity", str(res.fun))
-    print_kv("parameters", float_array_string(res.x))
-    print_kv("success", str(res.success))
+def _print_result(res, indent=0, **kwargs):
+    """Print out the useful information from an OptimizeResult."""
+    _print_kv = partial(_print_key_val, indent=indent, **kwargs)
+    _print_kv("infidelity", str(res.fun))
+    _print_kv("parameters", _float_array_string(res.x))
+    _print_kv("success", str(res.success))
     print("", **kwargs)
 
 def print_info(run_params, indent=0, **kwargs):
-    print_kv = partial(print_key_val, indent=indent, **kwargs)
-    print_kv("state", str(dict(run_params.state)))
-    print_kv("sequence", str(list(run_params.sequence)))
+    """Print out the useful information from a set of RunParameters."""
+    _print_kv = partial(_print_key_val, indent=indent, **kwargs)
+    _print_kv("state", str(dict(run_params.state)))
+    _print_kv("sequence", str(list(run_params.sequence)))
     laser = run_params.laser
     laser_str = "({}, {}, {})".format(laser.detuning, laser.lamb_dicke,
                                       laser.base_rabi)
-    print_kv("laser", laser_str)
-    print_kv("time", str(run_params.time))
+    _print_kv("laser", laser_str)
+    _print_kv("time", str(run_params.time))
 
 def file_filter(success_file, failure_file=None):
+    """file_filter(success_file: str, ?failure_file: str) -> filter_results
+
+    Create a results filter callback which can be used to neatly print out
+    results to a given success file (passed as a path) and optionally a failure
+    file (again as a path)."""
     def callback(file):
-        return lambda res: print_result(res, indent=1, file=file, flush=True)
+        return lambda res: _print_result(res, indent=1, file=file, flush=True)
     if failure_file is None:
         return filter_results(callback(success_file))
     return filter_results(callback(success_file), callback(failure_file))

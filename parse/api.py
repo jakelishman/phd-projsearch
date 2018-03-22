@@ -1,38 +1,16 @@
+"""Top-level functions for the `projsearch.parse` module - this file should
+typically not be accessed directly, since its name space is imported into the
+top-level namespace `projsearch.parse`."""
+
 from . import types, commands
 from ..functional import exists
+from ..run import RunParameters
 import itertools
 
+__all__ = ['machine_line', 'input_file_to_machine_lines',
+           'input_file_to_parameters', 'user_input_to_machine_input']
+
 _needed_params = set(["state", "sequence", "laser", "time"])
-
-class RunParameters:
-    """A set of parameters that can be passed to the function runners to run a
-    single instance of the optimiser."""
-    def __init__(self, state, sequence, laser, time):
-        """Arguments:
-        state: dict of string * complex --
-            A dictionary linking elements of a state vector specified as strings
-            (e.g. `"g1"` or `"e29"`) and their complex coefficients.  This
-            dictionary will be turned into a state which is normalised, but
-            keeps the relative phases and magnitudes of the coefficients.
-
-        sequence: iterable of int --
-            The pulse sequence to apply in numerical form, where 0 is the
-            carrier, -1 is the first red, 2 is the second blue and so on.  The
-            pulse sequence will be applied so that the first element of the
-            iterator is the first pulse applied to the state.
-
-        laser: (detuning: float) * (lamb_dicke: float) * (base_rabi: float) --
-            The same arguments which will be passed to create an instance of the
-            class `iontools.Laser`.
-
-        time: float in s --
-            The amount of walltime to optimise the parameters over.  The actual
-            time used will exceed this measure by up to the amount of time
-            needed for one optimisation run."""
-        self.state = state
-        self.sequence = sequence
-        self.laser = laser
-        self.time = time
 
 def machine_line(str):
     """machine_line(str: string) -> RunParameters
@@ -62,10 +40,10 @@ def machine_line(str):
     elif got - _needed_params != set():
         raise ValueError("Found extra keys {} in entry '{}'."
                          .format(got - _needed_params, str.strip()))
-    return RunParameters(types.to_state(dict_["state"]),
-                         types.to_sequence(dict_["sequence"]),
-                         types.to_laser(dict_["laser"]),
-                         types.to_time(dict_["time"]))
+    return RunParameters(types.state(dict_["state"]),
+                         types.sequence(dict_["sequence"]),
+                         types.laser(dict_["laser"]),
+                         types.time(dict_["time"]))
 
 def _cut_comment(str_):
     """_cut_comment(str_: str) -> str
@@ -126,9 +104,23 @@ def input_file_to_machine_lines(file_name):
                              + "before the last specifier was complete.")
 
 def input_file_to_parameters(file_name):
+    """input_file_to_parameters(file_name: str) -> generator of RunParameters
+
+    Acquire the lock on the human-readable input file with path `file_name`,
+    then return an iterator which yields each set of RunParameters in file
+    order.  Commands in the input file which produce ranges will be treated like
+    for loops, with the first encountered sequence being the outer-most loop.
+
+    The generator will close the file when it encounters an unreadable line, or
+    when the generator is fully consumed."""
     return map(machine_line, input_file_to_machine_lines(file_name))
 
 def user_input_to_machine_input(user_file_name, machine_file_name):
-    with open(machine_file_name, "w") as out:
+    """user_input_to_machine_input(user_file_name: str, machine_file_name: str)
+    -> None
+
+    Converts a single user input file into machine-readable lines which are then
+    appended to the (possibly non-existing) file called `machine_file_name`."""
+    with open(machine_file_name, "a") as out:
         for line in input_file_to_machine_lines(user_file_name):
             out.write(line + "\n")

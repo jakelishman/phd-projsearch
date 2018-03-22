@@ -174,6 +174,8 @@ opts_force_output=false
 # Separator character for file names.
 file_sep=";"
 
+start_dir="$(pwd -P)"
+
 # Output files that will be written.
 output_inputs_file="inputs_file"
 output_machine_inputs_file="machine_inputs_file"
@@ -272,12 +274,15 @@ fi
 
 # Stash python modules in the right place.
 python_code_dir="${opts_output_dir}/python"
-python_entry_point="${python_code_dir}/_projsearch_entry.py"
 python_path="${python_code_dir}:${PYTHONPATH}"
+python_entry_point="${python_code_dir}/_projsearch_entry.py"
+
 make_directory "${python_code_dir}"
 declare -a python_necessary_modules
 python_necessary_modules=("iontools" "projsearch")
-stash_python_modules "${python_code_dir}"
+
+# include the starting directory on the search path for stashing modules
+PYTHONPATH="${PYTHONPATH}:$start_dir" stash_python_modules "${python_code_dir}"
 
 # Load up a conda environment so we can run the input building commands.
 source "${opts_conda_sh}"
@@ -285,7 +290,7 @@ qutip_environment="qutip"
 conda activate "${qutip_environment}"
 
 # Build the input commands
-python << PythonScriptEnd
+PYTHONPATH="${python_path}" python << PythonScriptEnd
 from projsearch import parse
 parse.user_input_to_machine_input("$output_inputs_file",
                                   "$output_machine_inputs_file")
@@ -335,7 +340,8 @@ success_file="${output_success_file}_\${PBS_ARRAY_INDEX}"
 
 head -n "\${PBS_ARRAY_INDEX}" "$(realpath "${output_machine_inputs_file}")" \\
     | tail -n-1 \\
-    | python -O "${python_entry_point}" "\${success_file}" #"\${failure_file}"
+    | python -O "${python_entry_point}" \\
+        "\${success_file}" #"\${failure_file}"
 
 cp "\${success_file}" "${opts_output_dir}"/
 ScriptEnd

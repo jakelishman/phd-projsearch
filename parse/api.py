@@ -67,7 +67,6 @@ def input_file_to_machine_lines(file_name):
 
     The generator will close the file when it encounters an unreadable line, or
     when the generator is fully consumed."""
-    cur_dict = {}
     cur_order = []
     with open(file_name) as file:
         for line_num, line in enumerate(file):
@@ -82,7 +81,7 @@ def input_file_to_machine_lines(file_name):
                     raise ValueError(
                         "Could not interpret statement '" + statement + "'"
                         + " on line {}.".format(line_num + 1))
-                elif parts[0] in cur_dict:
+                elif exists(lambda t: t[0] == parts[0], cur_order):
                     raise ValueError(
                         "Encountered another specifier for '" + parts[0] + "'"
                         + " on line {}".format(line_num + 1)
@@ -92,14 +91,11 @@ def input_file_to_machine_lines(file_name):
                         "Encountered unknown parameter specifier '"
                         + parts[0] + "' in statement '" + statement + "'"
                         + " on line {}".format(line_num + 1))
-                else:
-                    cur_dict[parts[0]] = parts[1]
-                    cur_order.append(parts[0])
-                if set(cur_dict) == _needed_params:
-                    yield from commands.expand(cur_dict, cur_order)
-                    cur_dict = {}
+                cur_order.append(parts)
+                if set(map(lambda t: t[0], cur_order)) == _needed_params:
+                    yield from commands.expand(cur_order)
                     cur_order = []
-        if cur_dict != {}:
+        if cur_order != []:
             raise ValueError("End-of-file encountered "
                              + "before the last specifier was complete.")
 

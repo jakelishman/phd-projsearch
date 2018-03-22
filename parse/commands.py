@@ -23,7 +23,7 @@ def _sequences_of_length(start, stop=None):
     def possibles(nsides):
         return filter(allowed, itertools.product([0, -1, 1], repeat = nsides))
     lengths = [start] if stop is None else range(start, stop + 1)
-    iter_ = itertools.chain.iterable(map(possibles, lengths))
+    iter_ = itertools.chain.from_iterable(map(possibles, lengths))
     return map(types.string.sequence, iter_)
 
 # All functions of the form `[parameter]_[command](args)` are input file
@@ -111,6 +111,6 @@ def expand(param_list):
         A generator which will return all of the machine-readable lines
         specified by the set of pairs."""
     iters = [ _make_generator(param, spec) for param, spec in param_list ]
-    make_statement = lambda tup: param_list[tup[0]] + "=" + tup[1]
+    make_statement = lambda tup: param_list[tup[0]][0] + "=" + tup[1]
     make_line = lambda spec: ";".join(map(make_statement, enumerate(spec)))
     return map(make_line, itertools.product(*iters))

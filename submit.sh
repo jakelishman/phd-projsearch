@@ -300,6 +300,11 @@ if [[ ! $? -eq 0 ]]; then
     exit 1
 fi
 njobs=$(wc -l ${output_machine_inputs_file} | cut -d ' ' -f1)
+if [[ ${njobs} -gt 10000 ]]; then
+    echo "ERROR: too many jobs for a single array (max 10,000)." >&2
+    echo "       Consider splitting the inputs up." >&2
+    exit 1
+fi
 
 cat > "${python_entry_point}" << PythonScriptEnd
 if __name__ == '__main__':

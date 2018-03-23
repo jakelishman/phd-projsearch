@@ -8,7 +8,8 @@ from ..run import RunParameters
 import itertools
 
 __all__ = ['machine_line', 'input_file_to_machine_lines',
-           'input_file_to_parameters', 'user_input_to_machine_input']
+           'input_file_to_parameters', 'user_input_to_machine_input',
+           'key_value_statements']
 
 _needed_params = set(["state", "sequence", "laser", "time"])
 
@@ -57,6 +58,39 @@ def _cut_comment(str_):
     else:
         return str_[:comment_start]
 
+def key_value_statements(file, s_sep=';', kv_sep='='):
+    """key_value_statements(file: file object, ?s_sep, ?kv_sep) -> generator
+
+    Returns a generator of dictionaries, for looping through a file
+    statement-by-statement, removing comments and whitespace as necessary.
+
+    Arguments:
+    file: file object -- A file opened for reading in string mode.
+    s_sep: string --
+        The string which is considered to separate statements which occur on the
+        same line.
+    kv_sep: string -- The string which separates the key from its value.
+
+    Returns:
+    generator of dict with keys:
+        'key': str -- the "key" side of the pair.
+        'value': str -- the "value" side of the pair.
+        'line': int > 0 -- the line number the statement was found on.
+        'statement': str -- the whole statement that was parsed."""
+    for line_num, line in enumerate(file):
+        for stmt in map(lambda s: s.strip(), _cut_comment(line).split(s_sep)):
+            if stmt == '':
+                continue
+            parts = list(map(lambda s: s.strip(), stmt.split(kv_sep)))
+            if len(parts) is not 2 or exists(lambda s: s == '', parts):
+                raise ValueError("Could not interpret statement '" + stmt
+                                 + "' on line {} of '".format(line_num + 1)
+                                 + file.name + "'.")
+            else:
+                yield {'key': parts[0], 'value': parts[1],
+                       'line': line_num + 1, 'statement': stmt}
+
+
 def input_file_to_machine_lines(file_name):
     """input_file_to_machine_lines(file_name: str) -> generator of str
 
@@ -69,35 +103,24 @@ def input_file_to_machine_lines(file_name):
     when the generator is fully consumed."""
     cur_order = []
     with open(file_name) as file:
-        for line_num, line in enumerate(file):
-            statements = map(lambda s: s.strip(), _cut_comment(line).split(";"))
-            for statement in statements:
-                if statement == '':
-                    continue
-                parts = list(map(lambda s: s.strip(), statement.split("=")))
-                if len(parts) is not 2\
-                   or parts[0] not in _needed_params\
-                   or parts[1] is '':
-                    raise ValueError(
-                        "Could not interpret statement '" + statement + "'"
-                        + " on line {}.".format(line_num + 1))
-                elif exists(lambda t: t[0] == parts[0], cur_order):
-                    raise ValueError(
-                        "Encountered another specifier for '" + parts[0] + "'"
-                        + " on line {}".format(line_num + 1)
-                        + " before the previous input set was completed.")
-                elif parts[0] not in _needed_params:
-                    raise ValueError(
-                        "Encountered unknown parameter specifier '"
-                        + parts[0] + "' in statement '" + statement + "'"
-                        + " on line {}".format(line_num + 1))
-                cur_order.append(parts)
-                if set(map(lambda t: t[0], cur_order)) == _needed_params:
-                    yield from commands.expand(cur_order)
-                    cur_order = []
-        if cur_order != []:
-            raise ValueError("End-of-file encountered "
-                             + "before the last specifier was complete.")
+        for stmt in key_value_statements(file):
+            if exists(lambda t: t[0] == stmt['key'], cur_order):
+                raise ValueError(
+                    "Encountered another specifier for '" + stmt['key'] + "'"
+                    + " on line {}".format(stmt['line'])
+                    + " before the previous input set was completed.")
+            elif stmt['key'] not in _needed_params:
+                raise ValueError(
+                    "Encountered unknown parameter specifier '"
+                    + stmt['key'] + "' in statement '" + stmt['statement'] + "'"
+                    + " on line {}".format(stmt['line']))
+            cur_order.append((stmt['key'], stmt['value']))
+            if set(map(lambda t: t[0], cur_order)) == _needed_params:
+                yield from commands.expand(cur_order)
+                cur_order = []
+    if cur_order != []:
+        raise ValueError("End-of-file encountered "
+                         + "before the last specifier was complete.")
 
 def input_file_to_parameters(file_name):
     """input_file_to_parameters(file_name: str) -> generator of RunParameters

@@ -9,7 +9,7 @@ import itertools
 
 __all__ = ['machine_line', 'input_file_to_machine_lines',
            'input_file_to_parameters', 'user_input_to_machine_input',
-           'key_value_statements']
+           'key_value_statements', 'key_value_sets', 'next_run_parameters']
 
 _needed_params = set(["state", "sequence", "laser", "time"])
 
@@ -90,6 +90,81 @@ def key_value_statements(file, s_sep=';', kv_sep='='):
                 yield {'key': parts[0], 'value': parts[1],
                        'line': line_num + 1, 'statement': stmt}
 
+def key_value_sets(keys, statements):
+    """key_value_sets(keys, statements) -> generator of list of (str * str)
+
+    Group sets of key-value statements into consecutive groups which each have
+    exactly one of the `keys` in.
+
+    Arguments:
+    keys: set of str --
+        The set of keys that is required to be filled for one group.
+    statements: generator of dict -- The output of `key_value_statements`.
+
+    Returns:
+    generator of list of ((key: str) * (value: str))
+
+    Raises:
+    ValueError --
+        - If an unknown key is encountered.
+        - If a duplicate key is encountered before a set is complete.
+        - If the `statements` generator is exhausted with an incomplete set."""
+    params = []
+    for stmt in statements:
+        if exists(lambda t: t[0] == stmt['key'], params):
+            raise ValueError(
+                "Encountered another specifier for '" + stmt['key'] + "'"
+                + " on line {}".format(stmt['line'])
+                + " before the previous input set was completed.")
+        elif stmt['key'] not in keys:
+            raise ValueError(
+                "Encountered unknown parameter specifier '"
+                + stmt['key'] + "' in statement '" + stmt['statement'] + "'"
+                + " on line {}".format(stmt['line']))
+        params.append((stmt['key'], stmt['value']))
+        if set(map(lambda t: t[0], params)) == keys:
+            yield params
+            params = []
+    if len(params) != 0:
+        raise ValueError("End-of-file encountered "
+                         + "before the last specifier was complete.")
+
+def next_run_parameters(statements):
+    """next_run_parameters(statements) -> generator of RunParameters
+
+    Get a generator which returns all of the next defined set of RunParameters
+    in the 'key-val' `statements` iterator argument.  This returns a generator
+    because one input set can define multiple RunParameters by means of user
+    commands.
+
+    Arguments:
+    statements: generator of (str * str) --
+        A 'key-val' generator, such as that created by the function
+        `key_value_statements`.
+
+    Returns:
+    generator of RunParameters --
+        A generator which will return all the next set of defineed
+        RunParameters, including expanding any user commands.
+
+    Raises:
+    ValueError --
+        - If an unknown key was encountered in a key-val pair.
+        - If a duplicate key was encountered in the same set of specifiers.
+        - If statements run out while a parameter set is still being built.
+    StopIteration --
+        If there is no next set of RunParameters to take, i.e. the statements
+        run out immediately after a completed set of specifiers was found."""
+    return commands.expand(next(key_value_sets(_needed_params, statements)))
+
+def _machine_line_from_run_parameters(run_params):
+    """_machine_line_from_run_parameters(run_params: RunParameters) -> str
+
+    Parse a set of RunParameters into the string of a machine line."""
+    return "state=" + types.string.state(run_params.state)\
+           + ";sequence=" + types.string.sequence(run_params.sequence)\
+           + ";laser=" + types.string.laser(run_params.laser)\
+           + ";time=" + types.string.time(run_params.time)
 
 def input_file_to_machine_lines(file_name):
     """input_file_to_machine_lines(file_name: str) -> generator of str
@@ -101,26 +176,14 @@ def input_file_to_machine_lines(file_name):
 
     The generator will close the file when it encounters an unreadable line, or
     when the generator is fully consumed."""
-    cur_order = []
-    with open(file_name) as file:
-        for stmt in key_value_statements(file):
-            if exists(lambda t: t[0] == stmt['key'], cur_order):
-                raise ValueError(
-                    "Encountered another specifier for '" + stmt['key'] + "'"
-                    + " on line {}".format(stmt['line'])
-                    + " before the previous input set was completed.")
-            elif stmt['key'] not in _needed_params:
-                raise ValueError(
-                    "Encountered unknown parameter specifier '"
-                    + stmt['key'] + "' in statement '" + stmt['statement'] + "'"
-                    + " on line {}".format(stmt['line']))
-            cur_order.append((stmt['key'], stmt['value']))
-            if set(map(lambda t: t[0], cur_order)) == _needed_params:
-                yield from commands.expand(cur_order)
-                cur_order = []
-    if cur_order != []:
-        raise ValueError("End-of-file encountered "
-                         + "before the last specifier was complete.")
+    with open(file_name, "r") as file:
+        try:
+            statements = key_value_statements(file)
+            while True:
+                yield from map(_machine_line_from_run_parameters,
+                               next_run_parameters(statements))
+        except StopIteration:
+            return
 
 def input_file_to_parameters(file_name):
     """input_file_to_parameters(file_name: str) -> generator of RunParameters
@@ -132,7 +195,13 @@ def input_file_to_parameters(file_name):
 
     The generator will close the file when it encounters an unreadable line, or
     when the generator is fully consumed."""
-    return map(machine_line, input_file_to_machine_lines(file_name))
+    with open(file_name, "r") as file:
+        try:
+            statements = key_value_statements(file)
+            while True:
+                yield from next_run_parameters(statements)
+        except StopIteration:
+            return
 
 def user_input_to_machine_input(user_file_name, machine_file_name):
     """user_input_to_machine_input(user_file_name: str, machine_file_name: str)

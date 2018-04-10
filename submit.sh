@@ -131,7 +131,8 @@ print_parameters() {
 
 # Print a string pointing to the location of the python module given in $1.
 python_modpath() {
-    python -c "import imp; print(imp.find_module('$1')[1])" 2>/dev/null
+    python -c "import importlib; print(importlib.util.find_spec('$1').origin)"\
+        2>/dev/null
 }
 
 # Copy all python modules in the array ${python_necessary_modules} into the
@@ -144,6 +145,10 @@ stash_python_modules() {
         if [[ -z "$modpath" ]]; then
             echo "ERROR: couldn't find module '${module}'" >&2
             exit 1
+        fi
+        local modfile=$(basename $modpath)
+        if [[ "$modfile" == "__init__.py" ]]; then
+            modpath=$(dirname $modpath)
         fi
         if [[ -f "$modpath" ]]; then
             cp "$modpath" "$1"

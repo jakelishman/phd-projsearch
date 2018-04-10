@@ -5,6 +5,7 @@ the pulse sequence that was used to build the target state."""
 
 from . import run
 from . import parse
+from . import results
 from .run import *
 
 __all__ = run.__all__

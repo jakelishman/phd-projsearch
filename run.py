@@ -101,7 +101,7 @@ def _prepare_parameters(run_params):
     pairs = run_params.state.items() if isinstance(run_params.state, dict)\
             else list(run_params.state)
     ns = 1 + int(max(map(lambda t: t[0], pairs), key=lambda k: int(k[1:]))[1:])
-    ns += max(map(np.abs, run_params.sequence))
+    ns += sum(map(np.abs, run_params.sequence))
     start_state = it.state.create(run_params.state, ns=ns)
     sidebands = map(lambda x: it.Sideband(ns, x, run_params.laser),
                     run_params.sequence)

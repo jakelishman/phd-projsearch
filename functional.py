@@ -1,8 +1,9 @@
 """Functional programming utilities for working with generators."""
 
 import itertools
+import functools
 
-__all__ = ['exists', 'skip', 'tuples', 'flatmap', 'funnelmap']
+__all__ = ['exists', 'skip', 'tuples', 'flat_map', 'funnel_map', 'compose']
 
 def exists(predicate, iterable):
     """exists(predicate: 'T -> bool, iterable: iter of 'T) -> 'T
@@ -36,7 +37,7 @@ def tuples(iterable, n=2):
     and so on."""
     return zip(*map(lambda t: skip(*t), enumerate(itertools.tee(iterable, n))))
 
-def flatmap(mapping, iterable):
+def flat_map(mapping, iterable):
     """flatmap(mapping: 'A -> iterable of 'B, iterable: iterable of 'A)
     -> iterable of 'B
 
@@ -45,7 +46,7 @@ def flatmap(mapping, iterable):
     for el in iterable:
         yield from mapping(el)
 
-class funnelmap:
+class funnel_map:
     """funnelmap(consumer: iterator of 'A -> 'B, iterable: iterable of 'A)
     -> iterable of 'B
 
@@ -63,3 +64,30 @@ class funnelmap:
         return self._consumer(self._iterator)
     def __iter__(self):
         return self
+
+def _compose(funcs, x):
+    for f in funcs:
+        x = f(x)
+    return x
+
+def compose(first_function, *more_functions, left=False):
+    """compose(first_function: 'A -> 'B, *more_functions: 'B -> 'C) -> 'A -> 'C
+    compose(functions_iter) -> 'A -> 'Z
+
+    Return the composition of the functions given.  This can be either
+    right-composition (the default), e.g.
+        compose(f, g)(x) == g(f(x))
+    which is more useful for list reductions or left-composition (by using the
+    keyword argument `left=True`), e.g.
+        compose(f, g)(x) == f(g(x))
+    which looks more like mathematical notation.
+
+    If the first argument is an iterator, then compose will return the relevant
+    composition of all the functions in the iterator."""
+    try:
+        functions = tuple(first_function)
+    except TypeError:
+        functions = first_function, *more_functions
+    if left:
+        functions = reversed(functions)
+    return functools.partial(_compose, functions)

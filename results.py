@@ -1,5 +1,6 @@
 from . import parse
 from . import run
+from .functional import compose
 import ast
 import numpy as np
 import iontools as it
@@ -30,11 +31,94 @@ def from_output_file(file_name):
                 dict_[key] = ast.literal_eval(val)
             yield ResultSet(run_parameters=run_parameters, **dict_)
 
-def trace(results, magnitude=False, interleave=False, add_states=[]):
-    """trace(results, magnitude, interleave, add_states) -> str
+def _all_traces(states, sequence, parameters, magnitude):
+    """Return an iterator which gives the `Sequence.trace` for each different
+    starting state."""
+    ns = states[0].dims[0][1]
+    def mapping(state):
+        trace = sequence.trace(parameters, state)
+        mod = abs if magnitude else lambda x: x
+        return np.array([ list(map(mod, el.full().reshape((2 * ns,))))\
+                          for el in trace ])
+    return map(mapping, states)
 
-    Return a string which shows a trace of the effects of the found pulse
-    sequence on the target state and the other optimised states.
+def _remove_unused_motional_states(trace):
+    """Remove any motional levels from the trace that are never populated."""
+    trace = np.transpose(trace, (1, 0)) #[el, pulse]
+    ns = trace.shape[0] // 2
+    maxn_e = max(filter(lambda t: any(t[1]), enumerate(trace[:ns])))[0]
+    maxn_g = max(filter(lambda t: any(t[1]), enumerate(trace[ns:])))[0]
+    maxn = max(maxn_e, maxn_g)
+    return np.concatenate((trace[:maxn+1], trace[ns:ns+maxn+1])).T
+
+def _format_complex(j, atol):
+    """Get a pretty-printed string version of a complex number."""
+    if abs(j) < atol:
+        return "0"
+    elif abs(j.real) < atol:
+        return "{:.8g}i".format(j.imag)
+    elif abs(j.imag) < atol:
+        return "{:.8g}".format(j.real)
+    else:
+        return "{:.8g} {} {:.8g}i".format(j.real,
+                                           "+" if j.imag >= 0 else "-",
+                                           abs(j.imag))
+
+def _convert_to_strings(atol):
+    """Convert the result of a `Sequence.trace` so each element is a string."""
+    return lambda trace:\
+        np.array([_format_complex(x, atol) for x in trace.flat])\
+          .reshape(trace.shape)
+
+def _prepend_ket_names(trace):
+    """Add a column with the names of the relevant kets to the start."""
+    ns = trace.shape[1] // 2
+    kets = [ "|{}{}>".format(x, n) for x in [ "e", "g" ] for n in range(ns) ]
+    string_size = int(trace.dtype.str.lstrip("<>Uu"))
+    ket_size = len("|e{}>".format(ns - 1))
+    if ket_size > string_size:
+        trace = trace.astype("<U{}".format(ket_size))
+    return np.insert(trace, 0, kets, axis = 0)
+
+def _prepend_pulse_names(sequence):
+    """Assuming the ket names have already been prepended, insert a heading row
+    into the array with the names of the pulses."""
+    names = {0: "carrier", 1: "blue", -1: "red"}
+    headings = ["", "start"]\
+               + list(map(lambda x: names[x.order], sequence.pulses))
+    def prepender(trace):
+        return np.insert(trace, 0, headings, axis=1)
+    return prepender
+
+def _left_pad(trace):
+    """Right-align all the elements of each column, so a column is the same
+    width all the way down."""
+    columns = []
+    for column in trace:
+        column_max = 0
+        for row in column:
+            column_max = max(column_max, len(row))
+        columns.append([row.rjust(column_max) for row in column])
+    return np.array(columns)
+
+def _insert_heading_separator(trace):
+    """Insert the row which separates the heading row from the data."""
+    mapping = lambda x: "\u253c" if x == "\u2502" else "\u2500"
+    sep = "".join(map(mapping, trace[0]))
+    return np.array([ trace[0], sep ] + list(trace[1:]))
+
+def _interleave(trace):
+    """Interleave the ket rows so they go "|e0>, |g0>, |e1>, ..." instead of
+    doing all the "|e>" kets followed by all the "|g>" kets."""
+    ns = (trace.shape[0] // 2) - 1
+    order = [0, 1] + [2 + n + x * ns for n in range(ns) for x in range(2)]
+    return trace[order]
+
+def trace(results, magnitude=False, interleave=False, add_states=[], tol=5e-10):
+    """trace(results, magnitude, interleave, add_states) -> iter of str
+
+    Return an iterator of strings which shows a trace of the effects of the
+    found pulse sequence on the target state and the other optimised states.
 
     Arguments:
     results: ResultSet -- the set of results to use
@@ -46,49 +130,21 @@ def trace(results, magnitude=False, interleave=False, add_states=[]):
         than [|e0>, |e1>, ..., |g0>, |g1>, ...].
     add_states: optional list of dict --
         A list of state specifiers to trace the same sequence for.  These will
-        be appended to the automatically included states."""
-    def format_complex(j):
-        j = abs(j) if magnitude else j
-        if abs(j) < 5e-8:
-            return "0"
-        elif abs(j.real) < 5e-18:
-            return "{:.8g}i".format(j.imag)
-        elif abs(j.imag) < 5e-18:
-            return "{:.8g}".format(j.real)
-        else:
-            return "{:.8g} {} {:.8g}i".format(j.real,
-                                               "+" if j.imag >= 0 else "-",
-                                               abs(j.imag))
-    def all_traces(states, sequence, parameters):
-        ns = states[0].dims[0][1]
-        def mapping(state):
-            trace = sequence.trace(parameters, state)
-            kets = [ el.full().reshape((2 * ns,)) for el in trace ]
-            return np.array([ list(map(format_complex, ket)) for ket in kets ])
-        return np.array(list(map(mapping, states)), dtype='<U32')
-    def left_pad(strings):
-        for pulse in range(strings.shape[0]):
-            len_max = 0
-            for state in range(strings.shape[1]):
-                for el in range(strings.shape[2]):
-                    len_max = max(len_max, len(strings[pulse, state, el]))
-            for state in range(strings.shape[1]):
-                for el in range(strings.shape[2]):
-                    strings[pulse, state, el] =\
-                        strings[pulse, state, el].rjust(len_max)
+        be appended to the automatically included states.
+    tol: float -- The tolerance for displaying coefficients as zero."""
     states, sequence = run._prepare_parameters(results.run_parameters)
     ns = states[0].dims[0][1]
     states = np.append(states, [it.state.create(x, ns) for x in add_states])
-    strs = all_traces(states, sequence, results.parameters) # [state, pulse, el]
-    strs = np.transpose(strs, (1, 0, 2)) # [pulse, state, el]
-    ket_names = [ "|{}{}>".format(x, n) for x in ["e", "g"] for n in range(ns) ]
-    strs = np.insert(strs, 0, ket_names, 0) # strs now has |{}{}> prepended
-    left_pad(strs)
-    strs = np.transpose(strs, (1, 2, 0)) # [state, el, pulse]
-    if interleave:
-        order = [ n + x * ns for n in range(ns) for x in range(2) ]
-        strs = strs[:,order,:]
-    lines = np.array([[ " | ".join(strs[state, el])\
-                        for el in range(strs.shape[1]) ]\
-                      for state in range(strs.shape[0])])
-    return "\n\n".join(map(lambda state: "\n".join(state), lines))
+    traces = _all_traces(states, sequence, results.parameters, magnitude)
+    # `traces` now in [ start_state, pulse, ket ] order
+    pipeline = compose(
+        _remove_unused_motional_states,
+        _convert_to_strings(tol),
+        _prepend_ket_names,
+        _prepend_pulse_names(sequence),
+        _left_pad,
+        lambda tr: np.array([" \u2502 ".join(l) for l in np.transpose(tr)]),
+        _insert_heading_separator,
+        _interleave if interleave else lambda trace: trace,
+        lambda trace: "\n".join(trace))
+    return map(pipeline, traces)

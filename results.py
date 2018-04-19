@@ -6,9 +6,26 @@ import numpy as np
 import iontools as it
 
 class ResultSet:
-    """Struct for holding a set of results."""
+    """Struct for holding a set of results.
+
+    Properties:
+    run_parameters: RunParameters --
+        The set of parameters that were used in the run.  This can be passed
+        back to one of the runner commands to re-run the optimisation.
+    states: array_like of qutip.Qobj --
+        The original input states that were used as the basis.  The first state
+        is the `target`.
+    sequence: iontools.Sequence --
+        The sequence object that was used to do the calculations.
+    infidelity: float -- The ending infidelity.
+    parameters: np.array of float --
+        The parameters used to achieve that infidelity.  These can be passed to
+        `ResultSet.sequence.u()` to get the final propagator, or to other
+        functions in `ResultSet.sequence`.
+    success: bool -- Whether the optimisation was successful."""
     def __init__(self, run_parameters, infidelity, parameters, success):
         self.run_parameters = run_parameters
+        self.states, self.sequence = run.prepare_parameters(run_parameters)
         self.infidelity = infidelity
         self.parameters = parameters
         self.success = success
@@ -114,14 +131,14 @@ def _interleave(trace):
     order = [0, 1] + [2 + n + x * ns for n in range(ns) for x in range(2)]
     return trace[order]
 
-def trace(results, magnitude=False, interleave=False, add_states=[], tol=5e-10):
-    """trace(results, magnitude, interleave, add_states) -> iter of str
+def trace(result, magnitude=False, interleave=False, add_states=[], tol=5e-10):
+    """trace(result, magnitude, interleave, add_states) -> iter of str
 
     Return an iterator of strings which shows a trace of the effects of the
     found pulse sequence on the target state and the other optimised states.
 
     Arguments:
-    results: ResultSet -- the set of results to use
+    result: ResultSet -- the set of results to use
     magnitude: optional bool --
         If True, only show the magnitude of population in each ket at each
         stage, rather than the full magnitude*phase.
@@ -132,16 +149,16 @@ def trace(results, magnitude=False, interleave=False, add_states=[], tol=5e-10):
         A list of state specifiers to trace the same sequence for.  These will
         be appended to the automatically included states.
     tol: float -- The tolerance for displaying coefficients as zero."""
-    states, sequence = run._prepare_parameters(results.run_parameters)
-    ns = states[0].dims[0][1]
-    states = np.append(states, [it.state.create(x, ns) for x in add_states])
-    traces = _all_traces(states, sequence, results.parameters, magnitude)
+    ns = result.states[0].dims[0][1]
+    states = np.append(result.states,
+                       [it.state.create(state, ns) for state in add_states])
+    traces = _all_traces(states, result.sequence, result.parameters, magnitude)
     # `traces` now in [ start_state, pulse, ket ] order
     pipeline = compose(
         _remove_unused_motional_states,
         _convert_to_strings(tol),
         _prepend_ket_names,
-        _prepend_pulse_names(sequence),
+        _prepend_pulse_names(result.sequence),
         _left_pad,
         lambda tr: np.array([" \u2502 ".join(l) for l in np.transpose(tr)]),
         _insert_heading_separator,

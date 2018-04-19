@@ -11,11 +11,15 @@ import scipy.optimize
 import scipy.linalg
 import time
 
-__all__ = ['single_sequence', 'minimise_over_time', 'target', 'RunParameters']
+__all__ = ['single_sequence', 'minimise_over_time', 'target', 'RunParameters',
+           'prepare_parameters']
 
 class RunParameters:
     """A set of parameters that can be passed to the function runners to run a
-    single instance of the optimiser."""
+    single instance of the optimiser.
+
+    All the arguments to `__init__` are available as properties with the same
+    types and the same names."""
     def __init__(self, state, sequence, laser, time):
         """Arguments:
         state: dict of string * complex --
@@ -89,7 +93,7 @@ def orthonormal_basis(state):
     assert abs((state.unit().dag() * out[0]).norm() - 1) < 1e-8
     return out
 
-def _prepare_parameters(run_params):
+def prepare_parameters(run_params):
     """prepare_parameters(run_params: RunParameters)
     -> np.array of qutip.Qobj * iontool.Sequence
 
@@ -124,7 +128,7 @@ def target(run_params):
         pulses in sequence, i.e. [time, phase, time, phase, ...]) and returns
         the value of the infidelity of the gate operation and its derivatives
         with respect to each of the parameters."""
-    states, sequence = _prepare_parameters(run_params)
+    states, sequence = prepare_parameters(run_params)
     e_bra, g_bra = it.state.qubit_projectors(states[0])
     bras = np.array([g_bra] + [e_bra] * (len(states) - 1))
     def func(params):

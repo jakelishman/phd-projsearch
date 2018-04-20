@@ -30,10 +30,13 @@ class ResultSet:
         self.parameters = parameters
         self.success = success
 
-def from_output_file(file_name):
-    """from_output_file(file_name: str) -> generator of ResultSet
+def from_output_file(file_name, best_only=False):
+    """from_output_file(file_name: str) -> list of ResultSet
+    from_output_file(file_name: str, best_only=True) -> ResultSet
 
-    Read all the ResultSets from a given file."""
+    Read all the ResultSets from a given file and return a generator of them,
+    or, if `best_only` is set to `True`, return only the best results in the
+    file."""
     with open(file_name, "r") as file:
         statements = parse.key_value_statements(file)
         run_parameters = list(parse.next_run_parameters(statements))
@@ -42,11 +45,14 @@ def from_output_file(file_name):
                              + "  This function should only be run on results.")
         run_parameters = run_parameters[0]
         needed = set(["infidelity", "parameters", "success"])
-        for set_ in parse.key_value_sets(needed, statements):
+        def mapping(set_):
             dict_ = dict(set_)
             for key, val in dict_.items():
                 dict_[key] = ast.literal_eval(val)
-            yield ResultSet(run_parameters=run_parameters, **dict_)
+            return ResultSet(run_parameters=run_parameters, **dict_)
+        results = list(map(mapping, parse.key_value_sets(needed, statements)))
+        return max(results, key=lambda result: -result.infidelity)\
+               if best_only else results
 
 def _all_traces(states, sequence, parameters, magnitude):
     """Return an iterator which gives the `Sequence.trace` for each different

@@ -111,8 +111,8 @@ def prepare_parameters(run_params):
                     run_params.sequence)
     return orthonormal_basis(start_state), it.Sequence(*sidebands)
 
-def target(run_params):
-    """target(run_params: RunParameters)
+def target(run_params, with_derivative=True):
+    """target(run_params: RunParameters, with_derivative: bool)
     -> (np.array of float -> float * np.array of float)
 
     Returns a function which takes the parameter vector as an argument, and
@@ -127,7 +127,10 @@ def target(run_params):
         A function which takes a vector of parameters (of length 2 * number of
         pulses in sequence, i.e. [time, phase, time, phase, ...]) and returns
         the value of the infidelity of the gate operation and its derivatives
-        with respect to each of the parameters."""
+        with respect to each of the parameters.
+
+    np.array of float -> float --
+        If `with_derivative` is false, then only calculate the infidelity."""
     states, sequence = prepare_parameters(run_params)
     e_bra, g_bra = it.state.qubit_projectors(states[0])
     bras = np.array([g_bra] + [e_bra] * (len(states) - 1))
@@ -136,6 +139,8 @@ def target(run_params):
         infid = (g_bra * op * states[0]).norm() ** 2
         for i in range(len(states) - 1):
             infid += (e_bra * op * states[i + 1]).norm() ** 2
+        if not with_derivative:
+            return infid
         deriv = np.zeros_like(params)
         op_proj = bras * op * states
         for (i, d_op) in enumerate(sequence.d_op(params)):

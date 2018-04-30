@@ -93,7 +93,7 @@ def orthonormal_basis(state):
     assert abs((state.unit().dag() * out[0]).norm() - 1) < 1e-8
     return out
 
-def prepare_parameters(run_params):
+def prepare_parameters(run_params, with_derivative=True):
     """prepare_parameters(run_params: RunParameters)
     -> np.array of qutip.Qobj * iontool.Sequence
 
@@ -109,7 +109,8 @@ def prepare_parameters(run_params):
     start_state = it.state.create(run_params.state, ns=ns)
     sidebands = map(lambda x: it.Sideband(ns, x, run_params.laser),
                     run_params.sequence)
-    return orthonormal_basis(start_state), it.Sequence(*sidebands)
+    return orthonormal_basis(start_state),\
+           it.Sequence(sidebands, derivatives=with_derivative)
 
 def target(run_params, with_derivative=True):
     """target(run_params: RunParameters, with_derivative: bool)
@@ -131,7 +132,7 @@ def target(run_params, with_derivative=True):
 
     np.array of float -> float --
         If `with_derivative` is false, then only calculate the infidelity."""
-    states, sequence = prepare_parameters(run_params)
+    states, sequence = prepare_parameters(run_params, with_derivative)
     e_bra, g_bra = it.state.qubit_projectors(states[0])
     bras = np.array([g_bra] + [e_bra] * (len(states) - 1))
     def func(params):

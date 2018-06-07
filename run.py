@@ -135,19 +135,20 @@ def target(run_params, with_derivative=True):
     states, sequence = prepare_parameters(run_params, with_derivative)
     e_bra, g_bra = it.state.qubit_projectors(states[0])
     bras = np.array([g_bra] + [e_bra] * (len(states) - 1))
+    scale = 1.0 / len(states)
     def func(params):
         op = sequence.op(params)
         infid = (g_bra * op * states[0]).norm() ** 2
         for i in range(len(states) - 1):
             infid += (e_bra * op * states[i + 1]).norm() ** 2
         if not with_derivative:
-            return infid
+            return infid * scale
         deriv = np.zeros_like(params)
         op_proj = bras * op * states
         for (i, d_op) in enumerate(sequence.d_op(params)):
             for (oper, d_oper) in zip(op_proj, bras * d_op * states):
                 deriv[i] += 2 * np.real((oper.dag() * d_oper).data[0, 0])
-        return infid, deriv
+        return infid * scale, deriv * scale
     return func
 
 def minimise_over_time(func, gen_init_params, callback, time_limit):

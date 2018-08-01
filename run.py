@@ -20,7 +20,7 @@ class RunParameters:
 
     All the arguments to `__init__` are available as properties with the same
     types and the same names."""
-    def __init__(self, state, sequence, laser, time):
+    def __init__(self, state, sequence, lamb_dicke, base_rabi, time):
         """Arguments:
         state: dict of string * complex --
             A dictionary linking elements of a state vector specified as strings
@@ -44,7 +44,8 @@ class RunParameters:
             needed for one optimisation run."""
         self.state = state
         self.sequence = sequence
-        self.laser = laser
+        self.lamb_dicke = lamb_dicke
+        self.base_rabi = base_rabi
         self.time = time
 
 def _named_field(array, field):
@@ -107,7 +108,8 @@ def prepare_parameters(run_params, with_derivative=True):
     ns = 1 + int(max(map(lambda t: t[0], pairs), key=lambda k: int(k[1:]))[1:])
     ns += sum(map(np.abs, run_params.sequence))
     start_state = it.state.create(run_params.state, ns=ns)
-    sidebands = map(lambda x: it.Sideband(ns, x, run_params.laser),
+    sidebands = map(lambda x: it.Sideband(ns, x, run_params.lamb_dicke,
+                                                 run_params.base_rabi),
                     run_params.sequence)
     return orthonormal_basis(start_state),\
            it.Sequence(sidebands, derivatives=with_derivative)
@@ -221,7 +223,9 @@ class _make_random:
             The period is defined as the period of the Rabi transition of the
             `(0, abs(n))` coupling, where `n` is the order of the sideband."""
         orders = set(map(abs, run_params.sequence))
-        rabi = dict([(x, run_params.laser.rabi_mod(0, x)) for x in orders])
+        rabi = dict([(x, it.rabi.rabi_mod(0, run_params.lamb_dicke,
+                                          run_params.base_rabi, 0, x))
+                     for x in orders])
         self.max = list(_maximums_generator(run_params.sequence,rabi, nperiods))
 
     def __call__(self):
